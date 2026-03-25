@@ -66,6 +66,9 @@ const CSS = `
 	height: 100%;
 	object-fit: cover;
 	transition: opacity .4s;
+	pointer-events: none; /* prevent browser native image drag */
+	user-select: none;
+	-webkit-user-drag: none;
 }
 #luna-mini-player .lmp-art-video {
 	position: absolute;
@@ -334,6 +337,31 @@ const CSS = `
 	transition: opacity .3s;
 }
 
+/* ── swipe navigation hint ────────────────────────────────────────── */
+#luna-mini-player .lmp-swipe-hint {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	pointer-events: none;
+	opacity: 0;
+	border-radius: inherit;
+	color: #fff;
+	font-size: 28px;
+	text-shadow: 0 2px 10px rgba(0,0,0,.7);
+	transition: opacity .1s;
+}
+#luna-mini-player .lmp-swipe-hint.lmp-swipe-next {
+	justify-content: flex-end;
+	padding-right: 20px;
+	background: linear-gradient(to left, rgba(0,0,0,.45) 0%, transparent 65%);
+}
+#luna-mini-player .lmp-swipe-hint.lmp-swipe-prev {
+	justify-content: flex-start;
+	padding-left: 20px;
+	background: linear-gradient(to right, rgba(0,0,0,.45) 0%, transparent 65%);
+}
+
 /* ── context menu ─────────────────────────────────────────────────── */
 .lmp-ctx-menu {
 	position: fixed;
@@ -452,8 +480,8 @@ class MiniPlayer {
 	private volumeBarFill: HTMLDivElement;
 	private lyricsEl: HTMLElement;
 
-	/** Called with the new visibility whenever show() or hide() is invoked. */
-	public onVisibilityChange?: (visible: boolean) => void;
+	/** Listeners notified whenever show() or hide() is invoked (supports multiple buttons). */
+	public readonly onVisibilityChange = new Set<(visible: boolean) => void>();
 
 	// State
 	private currentTrackId: string | number | undefined;
@@ -470,8 +498,15 @@ class MiniPlayer {
 	private dragStartBottom = 0;
 	// Horizontal swipe state (trackpad gestures)
 	private swipeAccumX = 0;
-	private swipeAccumY = 0;
-	private static readonly SWIPE_THRESHOLD = 120; // px of accumulated horizontal scroll to trigger skip
+	private swipeFired = false;
+	private swipeResetTimer: ReturnType<typeof setTimeout> | null = null;
+	private swipeHintEl: HTMLElement | null = null;
+	// Vertical scroll accumulator (volume / seek)
+	private volAccumY = 0;
+	// Lyrics retry
+	private lyricsRetryTimer: ReturnType<typeof setTimeout> | null = null;
+	private lyricsTrackId: string | number | undefined;
+	private static readonly SWIPE_THRESHOLD = 80; // px of accumulated horizontal scroll to trigger skip
 	private static readonly VOL_STEP = 5; // volume % per scroll notch
 	private static readonly SEEK_STEP_SECONDS = 5; // seconds per scroll notch when in seek mode
 
@@ -498,6 +533,7 @@ class MiniPlayer {
 		this.volumeText = this.el.querySelector(".lmp-volume-text")!;
 		this.volumeBarFill = this.el.querySelector(".lmp-volume-bar-fill")!;
 		this.lyricsEl = this.el.querySelector(".lmp-lyric-line")!;
+		this.swipeHintEl = this.el.querySelector(".lmp-swipe-hint") as HTMLElement;
 
 		document.body.appendChild(this.el);
 
@@ -513,7 +549,7 @@ class MiniPlayer {
 	private buildHTML(): string {
 		return `
 			<!-- artwork -->
-			<img class="lmp-art" src="" alt="" />
+			<img class="lmp-art" src="" alt="" draggable="false" />
 			<video class="lmp-art-video" muted autoplay loop playsinline style="display:none"></video>
 
 			<!-- gradient overlays -->
@@ -556,6 +592,9 @@ class MiniPlayer {
 					<div class="lmp-volume-bar-fill" style="width:100%"></div>
 				</div>
 			</div>
+
+			<!-- swipe navigation hint -->
+			<div class="lmp-swipe-hint"></div>
 
 			<!-- lyrics line -->
 			<div class="lmp-lyrics" style="display:none">
@@ -601,40 +640,16 @@ class MiniPlayer {
 			PlayState.seek(ratio * this.currentDuration);
 		});
 
-		// Scroll: vertical → volume/seek, horizontal → skip
+		// Scroll: vertical → volume/seek  |  horizontal → skip track (one skip per gesture)
 		this.el.addEventListener("wheel", (e: WheelEvent) => {
 			e.preventDefault();
 			e.stopPropagation();
-
 			const dx = e.deltaX;
 			const dy = e.deltaY;
-
-			// Accumulate horizontal movement for trackpad swipe gestures
-			this.swipeAccumX += dx;
-			this.swipeAccumY += dy;
-
-			// Consume dominant axis first
-			if (Math.abs(dx) > Math.abs(dy)) {
-				// Horizontal dominant → skip
-				if (this.swipeAccumX > MiniPlayer.SWIPE_THRESHOLD) {
-					this.swipeAccumX = 0;
-					PlayState.next();
-				} else if (this.swipeAccumX < -MiniPlayer.SWIPE_THRESHOLD) {
-					this.swipeAccumX = 0;
-					PlayState.previous();
-				}
+			if (Math.abs(dx) >= Math.abs(dy)) {
+				this.handleHorizontalSwipe(dx);
 			} else {
-				// Vertical dominant → volume or seek
-				this.swipeAccumX = 0; // reset horizontal when vertical
-				if (Math.abs(this.swipeAccumY) >= 20) {
-					const notches = Math.round(this.swipeAccumY / 20);
-					this.swipeAccumY %= 20;
-					if (settings.scrollAction === "volume") {
-						this.adjustVolume(-notches * MiniPlayer.VOL_STEP);
-					} else {
-						PlayState.seek(Math.max(0, PlayState.playTime + (-notches * MiniPlayer.SEEK_STEP_SECONDS)));
-					}
-				}
+				this.handleVerticalScroll(dy, e.deltaMode);
 			}
 		}, { passive: false });
 
@@ -682,7 +697,7 @@ class MiniPlayer {
 
 		// TidaLuna event hooks
 		const unTrack = MediaItem.onMediaTransition(this.playerUnloads, (item: any) => this.onTrackChange(item));
-		const unState = PlayState.onState(this.playerUnloads, (state: any) => this.updatePlayButton(state === "PLAYING"));
+		const unState = PlayState.onState(this.playerUnloads, () => this.updatePlayButton(PlayState.playing));
 
 		this.playerUnloads.add(unTrack);
 		this.playerUnloads.add(unState);
@@ -819,38 +834,162 @@ class MiniPlayer {
 		}
 	}
 
+	// ─── Horizontal swipe helpers ─────────────────────────────────────────────
+	/**
+	 * Accumulate horizontal wheel delta and fire a single track-skip action once
+	 * the SWIPE_THRESHOLD is exceeded, then lock out further fires until the user
+	 * lifts (300 ms of scroll inactivity resets the gesture).  A ◀/▶ arrow
+	 * overlay is shown with opacity proportional to progress toward the threshold.
+	 */
+	private handleHorizontalSwipe(dx: number) {
+		// Restart the inactivity reset timer on every event
+		if (this.swipeResetTimer != null) clearTimeout(this.swipeResetTimer);
+
+		this.swipeAccumX += dx;
+		const progress = Math.min(1, Math.abs(this.swipeAccumX) / MiniPlayer.SWIPE_THRESHOLD);
+		const dir: "next" | "prev" = this.swipeAccumX > 0 ? "next" : "prev";
+
+		if (!this.swipeFired) {
+			this.showSwipeHint(dir, progress);
+			if (Math.abs(this.swipeAccumX) >= MiniPlayer.SWIPE_THRESHOLD) {
+				// Fire exactly once per gesture
+				this.swipeFired = true;
+				this.showSwipeHint(dir, 1.0);
+				if (this.swipeAccumX > 0) {
+					PlayState.next();
+				} else {
+					PlayState.previous();
+				}
+			}
+		}
+
+		// Reset gesture state after 300 ms of no scroll events
+		this.swipeResetTimer = setTimeout(() => {
+			this.swipeAccumX = 0;
+			this.swipeFired = false;
+			this.swipeResetTimer = null;
+			this.hideSwipeHint();
+		}, 300);
+	}
+
+	/**
+	 * Handle a vertical scroll event for volume or seek.
+	 * @param dy    - Raw wheel deltaY (pixels or lines depending on `mode`).
+	 * @param mode  - WheelEvent.deltaMode: 0 = pixels (trackpad / Chrome mouse),
+	 *                1 = lines (Firefox / Linux mouse wheel), 2 = pages (rare).
+	 *
+	 * For pixel mode the delta is accumulated in a 25 px bucket; each time the
+	 * bucket fills, exactly one step is fired and the bucket is hard-reset to
+	 * avoid double-firing (a single mouse-wheel notch of ~120 px fires once).
+	 * For line mode each event is treated as exactly one step immediately.
+	 */
+	private handleVerticalScroll(dy: number, mode: number) {
+		// deltaMode 1 = lines (discrete mouse wheel on Firefox/Linux): 1 event = 1 step
+		if (mode === 1) {
+			if (settings.scrollAction === "volume") {
+				this.adjustVolume(-Math.sign(dy) * MiniPlayer.VOL_STEP);
+			} else {
+				PlayState.seek(Math.max(0, PlayState.playTime + (-Math.sign(dy) * MiniPlayer.SEEK_STEP_SECONDS)));
+			}
+			return;
+		}
+		// deltaMode 0 = pixels (trackpad / smooth scroll / mouse wheel on Chrome):
+		// accumulate into 25 px buckets so one mouse-wheel notch (deltaY≈120) fires
+		// exactly 1 step and a slow trackpad scroll requires several events.
+		this.volAccumY += dy;
+		if (Math.abs(this.volAccumY) >= 25) {
+			const sign = Math.sign(this.volAccumY);
+			this.volAccumY = 0; // hard-reset to avoid double-firing
+			if (settings.scrollAction === "volume") {
+				this.adjustVolume(-sign * MiniPlayer.VOL_STEP);
+			} else {
+				PlayState.seek(Math.max(0, PlayState.playTime + (-sign * MiniPlayer.SEEK_STEP_SECONDS)));
+			}
+		}
+	}
+
+	private showSwipeHint(dir: "next" | "prev", progress: number) {
+		if (!this.swipeHintEl) return;
+		this.swipeHintEl.className = `lmp-swipe-hint lmp-swipe-${dir}`;
+		this.swipeHintEl.textContent = dir === "next" ? "▶" : "◀";
+		this.swipeHintEl.style.opacity = String(Math.min(0.95, progress * 0.8 + 0.15));
+	}
+
+	private hideSwipeHint() {
+		if (!this.swipeHintEl) return;
+		this.swipeHintEl.style.opacity = "0";
+		this.swipeHintEl.className = "lmp-swipe-hint";
+	}
+
 	// ─── Like / favorite ──────────────────────────────────────────────────────
+	/**
+	 * Returns the current user's favourite track IDs by probing multiple Redux
+	 * state paths, covering different Tidal / TidaLuna versions.
+	 */
+	private getFavTracks(): (string | number)[] {
+		const state = redux.store?.getState() as any;
+		// Try multiple Redux state paths used in different Tidal versions
+		return (
+			state?.favorites?.tracks ??
+			state?.userCollection?.favoriteTracks?.ids ??
+			state?.user?.favorites?.tracks ??
+			[]
+		);
+	}
+
 	private updateLikeState() {
 		if (this.currentTrackId === undefined) return;
-		const favTracks: (string | number)[] = (redux.store?.getState() as any)?.favorites?.tracks ?? [];
-		const isLiked = favTracks.some((id) => String(id) === String(this.currentTrackId));
+		const isLiked = this.getFavTracks().some((id) => String(id) === String(this.currentTrackId));
 		this.heartEl.innerHTML = isLiked ? ICON_HEART_FILLED : ICON_HEART_EMPTY;
 		this.heartEl.classList.toggle("liked", isLiked);
 	}
 
 	private toggleLike() {
 		if (this.currentTrackId === undefined) return;
-		const favTracks: (string | number)[] = (redux.store?.getState() as any)?.favorites?.tracks ?? [];
-		const isLiked = favTracks.some((id) => String(id) === String(this.currentTrackId));
-		try {
-			if (isLiked) {
-				redux.actions["favorites/REMOVE_FAVORITES"]({ ids: [this.currentTrackId], type: "TRACK" });
-			} else {
-				redux.actions["favorites/ADD_FAVORITES"]({ ids: [this.currentTrackId], type: "TRACK" });
-			}
-		} catch {
-			// Actions may have different names in some versions – log and continue
-			trace.warn("Could not toggle favourite – action not found.");
+		const isLiked = this.getFavTracks().some((id) => String(id) === String(this.currentTrackId));
+
+		// Optimistic UI update – show new state immediately
+		const optimisticLiked = !isLiked;
+		this.heartEl.innerHTML = optimisticLiked ? ICON_HEART_FILLED : ICON_HEART_EMPTY;
+		this.heartEl.classList.toggle("liked", optimisticLiked);
+
+		const payload = { ids: [this.currentTrackId], type: "TRACK" };
+		const addNames = ["favorites/ADD_FAVORITES", "favorites/addFavorite", "favorites/add"];
+		const removeNames = ["favorites/REMOVE_FAVORITES", "favorites/removeFavorite", "favorites/remove"];
+		const candidates = isLiked ? removeNames : addNames;
+
+		let dispatched = false;
+		for (const name of candidates) {
+			try {
+				if (typeof redux.actions?.[name] === "function") {
+					redux.actions[name](payload);
+					dispatched = true;
+					break;
+				}
+			} catch { /* try next */ }
 		}
-		// Optimistic UI update
-		setTimeout(() => this.updateLikeState(), 300);
+
+		if (!dispatched) {
+			trace.warn("Could not toggle favourite – no compatible action found.");
+			// Revert optimistic update
+			this.heartEl.innerHTML = isLiked ? ICON_HEART_FILLED : ICON_HEART_EMPTY;
+			this.heartEl.classList.toggle("liked", isLiked);
+		}
+
+		// Re-sync with ground truth after Redux has processed
+		setTimeout(() => this.updateLikeState(), 500);
 	}
 
 	// ─── Lyrics ───────────────────────────────────────────────────────────────
 	private loadLyrics() {
-		// Reset
+		// Cancel any pending retry from a previous track
+		if (this.lyricsRetryTimer != null) {
+			clearTimeout(this.lyricsRetryTimer);
+			this.lyricsRetryTimer = null;
+		}
 		this.lyricsLines = null;
 		this.stopLyricsInterval();
+
 		const lyricsContainer = this.el.querySelector(".lmp-lyrics") as HTMLElement;
 
 		if (settings.lyricsMode === "off") {
@@ -859,13 +998,40 @@ class MiniPlayer {
 			return;
 		}
 
-		// Try to access lyrics from the Redux content store
-		const state = redux.store?.getState() as any;
+		if (!this.currentTrackId) return;
+		this.lyricsTrackId = this.currentTrackId;
+		this.tryLoadLyricsFromState(0);
+	}
+
+	/**
+	 * Attempt to parse lyrics from the Redux store.
+	 * If not yet available, schedules up to 3 retries with increasing delays
+	 * (1.5 s / 3 s / 5 s) so lyrics loaded asynchronously by Tidal are picked up.
+	 */
+	private tryLoadLyricsFromState(attempt: number) {
+		// Abort if the track changed since we started
+		if (this.lyricsTrackId !== this.currentTrackId) return;
+		if (settings.lyricsMode === "off") return;
+
 		const trackId = this.currentTrackId;
 		if (!trackId) return;
 
-		const lyricsEntry = state?.content?.lyrics?.[trackId];
-		const subtitles: string | undefined = lyricsEntry?.subtitles ?? lyricsEntry?.lyrics;
+		const lyricsContainer = this.el.querySelector(".lmp-lyrics") as HTMLElement;
+		const state = redux.store?.getState() as any;
+		const id = String(trackId);
+
+		// Probe multiple Redux state paths used across different Tidal/TidaLuna versions
+		const lyricsEntry =
+			state?.content?.lyrics?.[id] ??
+			state?.content?.lyrics?.[trackId] ??
+			state?.lyrics?.[id] ??
+			state?.lyrics?.[trackId] ??
+			state?.player?.lyrics;
+
+		const subtitles: string | undefined =
+			lyricsEntry?.subtitles ??
+			lyricsEntry?.lyrics ??
+			lyricsEntry?.text;
 
 		const lines = parseLrc(subtitles);
 		if (lines && lines.length > 0) {
@@ -873,9 +1039,19 @@ class MiniPlayer {
 			lyricsContainer.style.display = "";
 			this.el.classList.add("lmp-has-lyrics");
 			this.startLyricsInterval();
-		} else {
-			lyricsContainer.style.display = "none";
-			this.el.classList.remove("lmp-has-lyrics");
+			return;
+		}
+
+		// Not found yet – hide and maybe retry
+		lyricsContainer.style.display = "none";
+		this.el.classList.remove("lmp-has-lyrics");
+
+		const retryDelays = [1500, 3000, 5000];
+		if (attempt < retryDelays.length) {
+			this.lyricsRetryTimer = setTimeout(() => {
+				this.lyricsRetryTimer = null;
+				this.tryLoadLyricsFromState(attempt + 1);
+			}, retryDelays[attempt]);
 		}
 	}
 
@@ -974,12 +1150,12 @@ class MiniPlayer {
 	// ─── Show / hide ──────────────────────────────────────────────────────────
 	public show() {
 		this.el.style.display = "";
-		this.onVisibilityChange?.(true);
+		this.onVisibilityChange.forEach(fn => fn(true));
 	}
 
 	public hide() {
 		this.el.style.display = "none";
-		this.onVisibilityChange?.(false);
+		this.onVisibilityChange.forEach(fn => fn(false));
 	}
 
 	public get isVisible() {
@@ -992,6 +1168,8 @@ class MiniPlayer {
 		this.stopLyricsInterval();
 		if (this.progressTimeout != null) clearInterval(this.progressTimeout);
 		if (this.volumeTimeout != null) clearTimeout(this.volumeTimeout);
+		if (this.swipeResetTimer != null) clearTimeout(this.swipeResetTimer);
+		if (this.lyricsRetryTimer != null) clearTimeout(this.lyricsRetryTimer);
 	}
 }
 
@@ -1023,7 +1201,7 @@ function mountPlaybackBarButton(player: MiniPlayer): () => void {
 		}
 	});
 
-	player.onVisibilityChange = syncActive;
+	player.onVisibilityChange.add(syncActive);
 
 	// Ordered candidate selectors for the right-side controls of Tidal's footer bar.
 	// Tidal uses obfuscated-but-readable class names so we match on substrings.
@@ -1059,6 +1237,86 @@ function mountPlaybackBarButton(player: MiniPlayer): () => void {
 	return () => {
 		obs.disconnect();
 		btn.remove();
+		player.onVisibilityChange.delete(syncActive);
+	};
+}
+
+// ─── Fullscreen-player toggle button ─────────────────────────────────────────
+/**
+ * Inject a mini-player toggle button into Tidal's fullscreen / Now-Playing view.
+ * Uses the same logic as mountPlaybackBarButton but targets the fullscreen player.
+ * Returns a cleanup function.
+ */
+function mountFullscreenButton(player: MiniPlayer): () => void {
+	const BTN_ID = "lmp-fs-btn";
+	document.getElementById(BTN_ID)?.remove();
+
+	const btn = document.createElement("button");
+	btn.id = BTN_ID;
+	btn.className = "lmp-toggle-btn";
+	btn.title = "Toggle Mini Player";
+	btn.setAttribute("aria-label", "Toggle Mini Player");
+	btn.innerHTML = ICON_PIP;
+
+	const syncActive = (visible: boolean) =>
+		btn.classList.toggle("lmp-active", visible);
+	syncActive(player.isVisible);
+
+	btn.addEventListener("click", () => {
+		if (player.isVisible) {
+			player.hide();
+		} else {
+			player.show();
+		}
+	});
+
+	player.onVisibilityChange.add(syncActive);
+
+	// Candidate selectors for Tidal's fullscreen / Now-Playing view controls.
+	// Multiple variants are listed to cover different Tidal versions.
+	const FULLSCREEN_SELECTORS = [
+		// Fullscreen player top-right or controls bar
+		'[class*="fullscreenPlayer"] [class*="rightSection"]',
+		'[class*="fullscreenPlayer"] [class*="rightControls"]',
+		'[class*="fullscreenPlayer"] [class*="topBar"]',
+		'[class*="fullscreenPlayer"] [class*="controls"]',
+		'[class*="fullscreenPlayer"] [class*="buttons"]',
+		'[class*="fullscreenPlayer"]',
+		// Video / animated cover player
+		'[class*="videoPlayer"] [class*="controls"]',
+		'[class*="videoPlayer"]',
+		// Now-playing / NPV view
+		'[class*="nowPlayingView"] [class*="controls"]',
+		'[class*="nowPlayingView"] [class*="topActions"]',
+		'[class*="nowPlayingView"]',
+		'[class*="npv"] [class*="controls"]',
+		'[class*="npv"]',
+	];
+
+	let injected = false;
+	const tryInject = () => {
+		if (injected && document.getElementById(BTN_ID)) return;
+		injected = false;
+		for (const sel of FULLSCREEN_SELECTORS) {
+			const container = document.querySelector(sel);
+			if (container) {
+				container.appendChild(btn);
+				injected = true;
+				return;
+			}
+		}
+	};
+
+	tryInject();
+
+	// Re-inject when Tidal's SPA navigates into / out of the fullscreen view
+	const obs = new MutationObserver(tryInject);
+	obs.observe(document.body, { childList: true, subtree: true });
+
+	return () => {
+		obs.disconnect();
+		btn.remove();
+		player.onVisibilityChange.delete(syncActive);
 	};
 }
 
@@ -1083,6 +1341,9 @@ const init = async () => {
 
 	// Inject a toggle button into Tidal's native footer playback bar
 	unloads.add(mountPlaybackBarButton(player));
+
+	// Inject a toggle button into Tidal's fullscreen / Now-Playing view
+	unloads.add(mountFullscreenButton(player));
 
 	// Register a context menu button in Tidal's right-click menu
 	// so the user can re-open the player via the profile menu
