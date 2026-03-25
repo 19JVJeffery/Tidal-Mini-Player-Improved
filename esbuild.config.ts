@@ -105,17 +105,27 @@ hash,
 code,
 };
 
+// store manifest – object with plugins list consumed by TidaLuna's LunaStore component
+const storePkg = {
+name: pkg.name,
+description: pkg.description,
+author: pkg.author,
+homepage: pkg.homepage,
+repository: pkg.repository,
+plugins: [pkg.name],
+};
+
 // tidal-mini-player.mjs  – raw bundle (for manual installs)
 await writeFile(outFile, code);
-// tidal-mini-player.json – single-plugin manifest (Install from URL)
+// tidal-mini-player.json – single-plugin manifest fetched by TidaLuna per plugin
 await writeFile(
 outFile.replace(".mjs", ".json"),
 JSON.stringify(distPkg, null, 2),
 );
-// store.json – array format expected by the TidaLuna "Install from URL" / release store pattern
+// store.json – store manifest with plugins list, fetched by TidaLuna's store UI
 await writeFile(
 `${outDir}/store.json`,
-JSON.stringify([distPkg], null, 2),
+JSON.stringify(storePkg, null, 2),
 );
 console.log(`Built ${outFile}`);
 });
