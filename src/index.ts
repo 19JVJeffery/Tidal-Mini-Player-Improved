@@ -484,6 +484,7 @@ class MiniPlayer {
 	public readonly onVisibilityChange = new Set<(visible: boolean) => void>();
 
 	// State
+	private currentItem: any = null;
 	private currentTrackId: string | number | undefined;
 	private currentDuration = 0;
 	private volumeTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -697,10 +698,37 @@ class MiniPlayer {
 
 		// TidaLuna event hooks
 		const unTrack = MediaItem.onMediaTransition(this.playerUnloads, (item: any) => this.onTrackChange(item));
-		const unState = PlayState.onState(this.playerUnloads, () => this.updatePlayButton(PlayState.playing));
+		const unState = PlayState.onState(this.playerUnloads, () => {
+			this.updatePlayButton(PlayState.playing);
+			// Keep duration in sync – playback context may resolve it after track transition
+			if (!this.currentDuration) {
+				this.currentDuration = PlayState.playbackContext?.duration ?? 0;
+			}
+			// Quality may be determined (e.g. HiRes confirmed) after the track starts
+			if (this.currentTrackId) this.updateQualityPill(this.currentItem);
+		});
 
 		this.playerUnloads.add(unTrack);
 		this.playerUnloads.add(unState);
+
+		// Subscribe to Redux store so the heart button stays in sync with favourites
+		// changes made from other UI surfaces (e.g. the main Tidal window).
+		let lastFavRef: unknown = undefined;
+		const reduxUnsubscribe = redux.store?.subscribe?.(() => {
+			if (!this.currentTrackId) return;
+			const state = redux.store?.getState() as any;
+			const favRef =
+				state?.favorites?.tracks ??
+				state?.userCollection?.favoriteTracks?.ids ??
+				state?.user?.favorites?.tracks;
+			if (favRef !== lastFavRef) {
+				lastFavRef = favRef;
+				this.updateLikeState();
+			}
+		});
+		if (typeof reduxUnsubscribe === "function") {
+			this.playerUnloads.add(reduxUnsubscribe);
+		}
 
 		// Kick off current track info
 		void MediaItem.fromPlaybackContext().then((item: any) => {
@@ -711,8 +739,9 @@ class MiniPlayer {
 	// ─── Track change handler ─────────────────────────────────────────────────
 	private async onTrackChange(item: any) {
 		if (!item) return;
+		this.currentItem = item;
 		this.currentTrackId = item.tidalItem?.id ?? item.id;
-		this.currentDuration = item.tidalItem?.duration ?? 0;
+		this.currentDuration = item.tidalItem?.duration ?? PlayState.playbackContext?.duration ?? 0;
 
 		// Title & artist
 		const title: string = item.tidalItem?.title ?? "Unknown";
@@ -796,8 +825,10 @@ class MiniPlayer {
 				this.progressFill.style.width = "0%";
 				this.progressFill.style.transition = "none";
 			} else {
-				const pct = Math.min(100, (PlayState.playTime / this.currentDuration) * 100);
-				this.progressFill.style.transition = "width .5s linear";
+				const playTime = PlayState.playTime ?? 0;
+				const pct = Math.min(100, (playTime / this.currentDuration) * 100);
+				// Only animate when actually playing; a paused bar should not drift
+				this.progressFill.style.transition = PlayState.playing ? "width .5s linear" : "none";
 				this.progressFill.style.width = `${pct}%`;
 			}
 		};
@@ -889,7 +920,7 @@ class MiniPlayer {
 			if (settings.scrollAction === "volume") {
 				this.adjustVolume(-Math.sign(dy) * MiniPlayer.VOL_STEP);
 			} else {
-				PlayState.seek(Math.max(0, PlayState.playTime + (-Math.sign(dy) * MiniPlayer.SEEK_STEP_SECONDS)));
+				PlayState.seek(Math.max(0, (PlayState.playTime ?? 0) + (-Math.sign(dy) * MiniPlayer.SEEK_STEP_SECONDS)));
 			}
 			return;
 		}
@@ -903,7 +934,7 @@ class MiniPlayer {
 			if (settings.scrollAction === "volume") {
 				this.adjustVolume(-sign * MiniPlayer.VOL_STEP);
 			} else {
-				PlayState.seek(Math.max(0, PlayState.playTime + (-sign * MiniPlayer.SEEK_STEP_SECONDS)));
+				PlayState.seek(Math.max(0, (PlayState.playTime ?? 0) + (-sign * MiniPlayer.SEEK_STEP_SECONDS)));
 			}
 		}
 	}
@@ -1000,7 +1031,44 @@ class MiniPlayer {
 
 		if (!this.currentTrackId) return;
 		this.lyricsTrackId = this.currentTrackId;
+
+		// ── Primary path: use MediaItem.lyrics() API directly (most reliable) ──
+		// The reference implementation (jxnxsdev/luna-plugins) demonstrates this
+		// approach.  Calling the API directly is far more reliable than probing
+		// arbitrary Redux state paths, which vary across Tidal versions.
+		if (this.currentItem && typeof this.currentItem.lyrics === "function") {
+			const trackId = this.lyricsTrackId;
+			this.currentItem.lyrics()
+				.then((lyricsData: any) => {
+					if (this.lyricsTrackId !== trackId) return; // track changed during async fetch
+					const subtitles: string | undefined =
+						lyricsData?.subtitles ?? lyricsData?.lyrics ?? lyricsData?.text;
+					const lines = parseLrc(subtitles);
+					if (lines && lines.length > 0) {
+						this.applyLyricsLines(lines);
+						return;
+					}
+					// API returned no timed lyrics — fall back to Redux polling
+					this.tryLoadLyricsFromState(0);
+				})
+				.catch(() => {
+					// API call failed — fall back to Redux polling
+					if (this.lyricsTrackId === trackId) this.tryLoadLyricsFromState(0);
+				});
+			return;
+		}
+
+		// ── Fallback path: probe Redux state with retries ──
 		this.tryLoadLyricsFromState(0);
+	}
+
+	/** Apply a successfully parsed set of lyric lines and start the display interval. */
+	private applyLyricsLines(lines: LyricLine[]) {
+		const lyricsContainer = this.el.querySelector(".lmp-lyrics") as HTMLElement;
+		this.lyricsLines = lines;
+		lyricsContainer.style.display = "";
+		this.el.classList.add("lmp-has-lyrics");
+		this.startLyricsInterval();
 	}
 
 	/**
@@ -1016,7 +1084,6 @@ class MiniPlayer {
 		const trackId = this.currentTrackId;
 		if (!trackId) return;
 
-		const lyricsContainer = this.el.querySelector(".lmp-lyrics") as HTMLElement;
 		const state = redux.store?.getState() as any;
 		const id = String(trackId);
 
@@ -1035,14 +1102,12 @@ class MiniPlayer {
 
 		const lines = parseLrc(subtitles);
 		if (lines && lines.length > 0) {
-			this.lyricsLines = lines;
-			lyricsContainer.style.display = "";
-			this.el.classList.add("lmp-has-lyrics");
-			this.startLyricsInterval();
+			this.applyLyricsLines(lines);
 			return;
 		}
 
 		// Not found yet – hide and maybe retry
+		const lyricsContainer = this.el.querySelector(".lmp-lyrics") as HTMLElement;
 		lyricsContainer.style.display = "none";
 		this.el.classList.remove("lmp-has-lyrics");
 
@@ -1058,7 +1123,7 @@ class MiniPlayer {
 	private startLyricsInterval() {
 		this.lyricsInterval = setInterval(() => {
 			if (!this.lyricsLines) return;
-			const idx = currentLyricIndex(this.lyricsLines, PlayState.playTime);
+			const idx = currentLyricIndex(this.lyricsLines, PlayState.playTime ?? 0);
 			const text = this.lyricsLines[idx]?.text ?? "";
 			if (this.lyricsEl.textContent !== text) {
 				this.lyricsEl.style.opacity = "0";
