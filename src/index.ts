@@ -43,19 +43,20 @@ const CSS = `
 #luna-mini-player {
 	position: fixed;
 	z-index: 99999;
-	width: 280px;
-	height: 280px;
-	border-radius: 16px;
+	width: 300px;
+	height: 300px;
+	border-radius: 18px;
 	overflow: hidden;
-	box-shadow: 0 8px 32px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.08);
+	box-shadow: 0 8px 32px rgba(0,0,0,.65), 0 0 0 1px rgba(255,255,255,.08);
 	cursor: default;
 	user-select: none;
-	transition: box-shadow .2s;
+	transition: box-shadow .25s, transform .15s;
 	background: #111;
 	font-family: inherit;
 }
 #luna-mini-player:hover {
-	box-shadow: 0 12px 40px rgba(0,0,0,.8), 0 0 0 1px rgba(255,255,255,.15);
+	box-shadow: 0 14px 48px rgba(0,0,0,.85), 0 0 0 1px rgba(255,255,255,.18);
+	transform: scale(1.01);
 }
 
 /* ── artwork layer ─────────────────────────────────────────────────── */
@@ -82,15 +83,15 @@ const CSS = `
 #luna-mini-player .lmp-overlay-top {
 	position: absolute;
 	inset: 0 0 auto 0;
-	height: 60px;
-	background: linear-gradient(to bottom, rgba(0,0,0,.55) 0%, transparent 100%);
+	height: 70px;
+	background: linear-gradient(to bottom, rgba(0,0,0,.6) 0%, transparent 100%);
 	pointer-events: none;
 }
 #luna-mini-player .lmp-overlay-bottom {
 	position: absolute;
 	inset: auto 0 0 0;
-	height: 130px;
-	background: linear-gradient(to top, rgba(0,0,0,.75) 0%, transparent 100%);
+	height: 150px;
+	background: linear-gradient(to top, rgba(0,0,0,.82) 0%, transparent 100%);
 	pointer-events: none;
 }
 
@@ -110,6 +111,11 @@ const CSS = `
 	display: flex;
 	gap: 6px;
 	align-items: center;
+	opacity: 0;
+	transition: opacity .2s;
+}
+#luna-mini-player:hover .lmp-topbar {
+	opacity: 1;
 }
 #luna-mini-player .lmp-quality {
 	font-size: 10px;
@@ -147,9 +153,10 @@ const CSS = `
 /* ── track info ───────────────────────────────────────────────────── */
 #luna-mini-player .lmp-info {
 	position: absolute;
-	bottom: 56px;
-	left: 12px;
-	right: 12px;
+	bottom: 60px;
+	left: 14px;
+	right: 14px;
+	transition: bottom .2s;
 }
 #luna-mini-player .lmp-title {
 	font-size: 14px;
@@ -158,27 +165,27 @@ const CSS = `
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
-	text-shadow: 0 1px 4px rgba(0,0,0,.5);
+	text-shadow: 0 1px 6px rgba(0,0,0,.6);
 }
 #luna-mini-player .lmp-artist {
 	font-size: 12px;
-	color: rgba(255,255,255,.7);
+	color: rgba(255,255,255,.72);
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	margin-top: 2px;
-	text-shadow: 0 1px 4px rgba(0,0,0,.5);
+	text-shadow: 0 1px 6px rgba(0,0,0,.6);
 }
 
 /* ── controls ─────────────────────────────────────────────────────── */
 #luna-mini-player .lmp-controls {
 	position: absolute;
-	bottom: 12px;
-	left: 12px;
-	right: 12px;
+	bottom: 14px;
+	left: 14px;
+	right: 14px;
 	display: flex;
 	flex-direction: column;
-	gap: 6px;
+	gap: 7px;
 	opacity: 0;
 	transition: opacity .2s;
 }
@@ -189,7 +196,7 @@ const CSS = `
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	gap: 16px;
+	gap: 18px;
 }
 #luna-mini-player .lmp-btn {
 	background: none;
@@ -200,25 +207,25 @@ const CSS = `
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	transition: color .15s, transform .1s;
+	transition: color .15s, transform .12s;
 	line-height: 1;
 }
 #luna-mini-player .lmp-btn:hover {
 	color: #fff;
-	transform: scale(1.1);
+	transform: scale(1.12);
 }
 #luna-mini-player .lmp-btn.lmp-btn-play {
-	width: 38px;
-	height: 38px;
-	background: rgba(255,255,255,.15);
+	width: 40px;
+	height: 40px;
+	background: rgba(255,255,255,.18);
 	backdrop-filter: blur(8px);
 	border-radius: 50%;
 	font-size: 18px;
-	transition: background .15s, transform .1s;
+	transition: background .15s, transform .12s;
 }
 #luna-mini-player .lmp-btn.lmp-btn-play:hover {
-	background: rgba(255,255,255,.25);
-	transform: scale(1.05);
+	background: rgba(255,255,255,.28);
+	transform: scale(1.06);
 }
 #luna-mini-player .lmp-btn svg {
 	display: block;
@@ -229,8 +236,12 @@ const CSS = `
 	position: relative;
 	height: 4px;
 	border-radius: 2px;
-	background: rgba(255,255,255,.2);
+	background: rgba(255,255,255,.22);
 	cursor: pointer;
+	transition: height .15s;
+}
+#luna-mini-player .lmp-progress-wrap:hover {
+	height: 6px;
 }
 #luna-mini-player .lmp-progress-fill {
 	height: 100%;
@@ -248,26 +259,26 @@ const CSS = `
 	position: absolute;
 	top: 10px;
 	left: 10px;
-	width: 28px;
-	height: 28px;
-	background: rgba(0,0,0,.35);
-	backdrop-filter: blur(6px);
-	border: 1px solid rgba(255,255,255,.12);
+	width: 30px;
+	height: 30px;
+	background: rgba(0,0,0,.4);
+	backdrop-filter: blur(8px);
+	border: 1px solid rgba(255,255,255,.14);
 	border-radius: 50%;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	cursor: pointer;
-	color: rgba(255,255,255,.6);
+	color: rgba(255,255,255,.7);
 	opacity: 0;
-	transition: opacity .2s, background .15s, transform .1s;
+	transition: opacity .2s, background .15s, transform .12s;
 }
 #luna-mini-player:hover .lmp-heart {
 	opacity: 1;
 }
 #luna-mini-player .lmp-heart:hover {
-	background: rgba(255,255,255,.2);
-	transform: scale(1.1);
+	background: rgba(255,255,255,.22);
+	transform: scale(1.12);
 }
 #luna-mini-player .lmp-heart.liked {
 	color: #ff4466;
@@ -325,6 +336,7 @@ const CSS = `
 	align-items: flex-end;
 	padding: 0 12px 10px;
 	background: linear-gradient(to top, rgba(0,0,0,.75) 60%, transparent 100%);
+	pointer-events: none;
 }
 #luna-mini-player .lmp-lyric-line {
 	font-size: 13px;
@@ -335,6 +347,13 @@ const CSS = `
 	line-height: 1.35;
 	text-shadow: 0 1px 6px rgba(0,0,0,.6);
 	transition: opacity .3s;
+}
+/* When lyrics are active, push info and controls above the lyrics panel */
+#luna-mini-player.lmp-has-lyrics .lmp-info {
+	bottom: 100px;
+}
+#luna-mini-player.lmp-has-lyrics .lmp-controls {
+	bottom: 90px;
 }
 
 /* ── swipe navigation hint ────────────────────────────────────────── */
@@ -540,6 +559,9 @@ class MiniPlayer {
 
 		this.bindEvents();
 		this.startProgressLoop();
+
+		// Ensure the lyrics interval is always stopped when the player unloads
+		this.playerUnloads.add(() => this.stopLyricsInterval());
 
 		// Reflect initial playback state
 		this.updatePlayButton(PlayState.playing);
@@ -842,11 +864,35 @@ class MiniPlayer {
 	private adjustVolume(delta: number) {
 		const current: number = PlayState.playbackControls?.volume ?? 100;
 		const next = Math.max(0, Math.min(100, current + delta));
-		// Dispatch Redux action – the action name may vary; this is the standard Luna one
-		try {
-			redux.actions["playbackControls/SET_VOLUME"](next);
-		} catch {
-			// Fallback: try to set volume on the active audio element
+
+		// Try known Redux action names that Tidal/TidaLuna may expose for volume
+		const volumeActionNames = [
+			"playbackControls/SET_VOLUME",
+			"playbackControls/setVolume",
+			"playbackControls/CHANGE_VOLUME",
+			"playbackControls/changeVolume",
+			"volume/setVolume",
+			"volume/SET_VOLUME",
+		];
+		let dispatched = false;
+		for (const name of volumeActionNames) {
+			if (typeof redux.actions?.[name] === "function") {
+				try {
+					redux.actions[name](next);
+					dispatched = true;
+					break;
+				} catch { /* try next */ }
+			}
+		}
+		// Fallback: dispatch directly via the Redux store
+		if (!dispatched && typeof redux.store?.dispatch === "function") {
+			try {
+				redux.store.dispatch({ type: "playbackControls/SET_VOLUME", payload: next });
+				dispatched = true;
+			} catch { /* ignore */ }
+		}
+		// Last resort: HTML5 audio element
+		if (!dispatched) {
 			const audio = document.querySelector<HTMLAudioElement>("audio");
 			if (audio) audio.volume = next / 100;
 		}
@@ -985,8 +1031,24 @@ class MiniPlayer {
 		this.heartEl.classList.toggle("liked", optimisticLiked);
 
 		const payload = { ids: [this.currentTrackId], type: "TRACK" };
-		const addNames = ["favorites/ADD_FAVORITES", "favorites/addFavorite", "favorites/add"];
-		const removeNames = ["favorites/REMOVE_FAVORITES", "favorites/removeFavorite", "favorites/remove"];
+		const addNames = [
+			"favorites/ADD_FAVORITES",
+			"favorites/addFavorites",
+			"favorites/addFavorite",
+			"favorites/add",
+			"userCollection/addFavoriteTrack",
+			"userCollection/addFavorite",
+			"collection/addFavorite",
+		];
+		const removeNames = [
+			"favorites/REMOVE_FAVORITES",
+			"favorites/removeFavorites",
+			"favorites/removeFavorite",
+			"favorites/remove",
+			"userCollection/removeFavoriteTrack",
+			"userCollection/removeFavorite",
+			"collection/removeFavorite",
+		];
 		const candidates = isLiked ? removeNames : addNames;
 
 		let dispatched = false;
@@ -998,6 +1060,15 @@ class MiniPlayer {
 					break;
 				}
 			} catch { /* try next */ }
+		}
+
+		// Fallback: dispatch directly via the Redux store
+		if (!dispatched && typeof redux.store?.dispatch === "function") {
+			const actionType = isLiked ? "favorites/REMOVE_FAVORITES" : "favorites/ADD_FAVORITES";
+			try {
+				redux.store.dispatch({ type: actionType, payload });
+				dispatched = true;
+			} catch { /* ignore */ }
 		}
 
 		if (!dispatched) {
@@ -1033,16 +1104,17 @@ class MiniPlayer {
 		this.lyricsTrackId = this.currentTrackId;
 
 		// ── Primary path: use MediaItem.lyrics() API directly (most reliable) ──
-		// The reference implementation (jxnxsdev/luna-plugins) demonstrates this
-		// approach.  Calling the API directly is far more reliable than probing
-		// arbitrary Redux state paths, which vary across Tidal versions.
 		if (this.currentItem && typeof this.currentItem.lyrics === "function") {
 			const trackId = this.lyricsTrackId;
 			this.currentItem.lyrics()
 				.then((lyricsData: any) => {
 					if (this.lyricsTrackId !== trackId) return; // track changed during async fetch
+					// Probe multiple response shapes returned by different Tidal versions
 					const subtitles: string | undefined =
-						lyricsData?.subtitles ?? lyricsData?.lyrics ?? lyricsData?.text;
+						lyricsData?.subtitles ??
+						lyricsData?.lyrics?.subtitles ??
+						lyricsData?.lyrics ??
+						lyricsData?.text;
 					const lines = parseLrc(subtitles);
 					if (lines && lines.length > 0) {
 						this.applyLyricsLines(lines);
@@ -1093,10 +1165,13 @@ class MiniPlayer {
 			state?.content?.lyrics?.[trackId] ??
 			state?.lyrics?.[id] ??
 			state?.lyrics?.[trackId] ??
-			state?.player?.lyrics;
+			state?.player?.lyrics ??
+			state?.playback?.lyrics ??
+			state?.nowPlaying?.lyrics;
 
 		const subtitles: string | undefined =
 			lyricsEntry?.subtitles ??
+			lyricsEntry?.lyrics?.subtitles ??
 			lyricsEntry?.lyrics ??
 			lyricsEntry?.text;
 
@@ -1121,6 +1196,8 @@ class MiniPlayer {
 	}
 
 	private startLyricsInterval() {
+		// Stop any existing interval before starting a new one to avoid duplicates
+		this.stopLyricsInterval();
 		this.lyricsInterval = setInterval(() => {
 			if (!this.lyricsLines) return;
 			const idx = currentLyricIndex(this.lyricsLines, PlayState.playTime ?? 0);
@@ -1133,7 +1210,6 @@ class MiniPlayer {
 				}, 150);
 			}
 		}, 200);
-		this.playerUnloads.add(() => this.stopLyricsInterval());
 	}
 
 	private stopLyricsInterval() {

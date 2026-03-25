@@ -30,7 +30,9 @@ export function parseLrc(raw: string | null | undefined): LyricLine[] | null {
 		const seconds = parseInt(match[2], 10);
 		const ms = parseInt(match[3].padEnd(3, "0"), 10);
 		const time = minutes * 60 + seconds + ms / 1000;
-		const text = match[4].trim();
+		// Strip word-level timing markers used by TIDAL's enhanced LRC format
+		// e.g. "<00:10.82>Word<00:11.20> next" → "Word next"
+		const text = match[4].replace(/<[^>]*>/g, "").trim();
 		if (text) lines.push({ time, text });
 	}
 
