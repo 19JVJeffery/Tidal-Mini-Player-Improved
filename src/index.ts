@@ -15,9 +15,9 @@
 
 // ─── Luna imports (resolved at runtime by TidaLuna's module system) ──────────
 // @ts-expect-error – these are runtime-resolved Luna modules
-import { Tracer, ReactiveStore, type LunaUnload } from "@luna/core";
+import { Tracer, ReactiveStore, findModuleByProperty, type LunaUnload } from "@luna/core";
 // @ts-expect-error
-import { PlayState, MediaItem, StyleTag, ContentBase, Quality, ContextMenu, redux } from "@luna/lib";
+import { PlayState, MediaItem, StyleTag, ContentBase, Quality, ContextMenu, redux, observe, observePromise } from "@luna/lib";
 
 import { currentLyricIndex, parseLrc, type LyricLine } from "./lyrics";
 
@@ -372,6 +372,29 @@ const CSS = `
 }
 .lmp-ctx-item .lmp-ctx-label {
 	flex: 1;
+}
+
+/* ── playback bar / full-screen player toggle button ──────────────── */
+.lmp-toggle-btn {
+	all: unset;
+	box-sizing: border-box;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	border-radius: 50%;
+	cursor: pointer;
+	color: rgba(255, 255, 255, 0.5);
+	flex-shrink: 0;
+	transition: color 0.15s, background 0.15s;
+}
+.lmp-toggle-btn:hover {
+	color: #fff;
+	background: rgba(255, 255, 255, 0.1);
+}
+.lmp-toggle-btn.lmp-active {
+	color: #32f4ff;
 }
 `;
 

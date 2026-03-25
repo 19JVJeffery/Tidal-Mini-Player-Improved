@@ -40,6 +40,7 @@ const LUNA_MODULE_EXPORTS: Record<string, string[]> = {
 "ContextMenu",
 "Playlist",
 "Tidal",
+"observe",
 "observePromise",
 "getPlaybackInfo",
 "parseDate",
