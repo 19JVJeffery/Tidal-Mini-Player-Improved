@@ -430,6 +430,11 @@ const ICON_VOLUME = svg(
 	"0 0 24 24",
 	22,
 );
+const ICON_PIP = svg(
+	'<path d="M19 11h-8v6h8v-6zm4 8V4.98C23 3.88 22.1 3 21 3H3C1.9 3 1 3.88 1 4.98V19c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2zm-2 .02H3V4.97h18v14.05z"/>',
+	"0 0 24 24",
+	20,
+);
 
 // ─── Mini-player class ────────────────────────────────────────────────────────
 class MiniPlayer {
@@ -446,6 +451,9 @@ class MiniPlayer {
 	private volumeText: HTMLElement;
 	private volumeBarFill: HTMLDivElement;
 	private lyricsEl: HTMLElement;
+
+	/** Called with the new visibility whenever show() or hide() is invoked. */
+	public onVisibilityChange?: (visible: boolean) => void;
 
 	// State
 	private currentTrackId: string | number | undefined;
@@ -966,10 +974,12 @@ class MiniPlayer {
 	// ─── Show / hide ──────────────────────────────────────────────────────────
 	public show() {
 		this.el.style.display = "";
+		this.onVisibilityChange?.(true);
 	}
 
 	public hide() {
 		this.el.style.display = "none";
+		this.onVisibilityChange?.(false);
 	}
 
 	public get isVisible() {
@@ -983,6 +993,73 @@ class MiniPlayer {
 		if (this.progressTimeout != null) clearInterval(this.progressTimeout);
 		if (this.volumeTimeout != null) clearTimeout(this.volumeTimeout);
 	}
+}
+
+// ─── Playback-bar toggle button ──────────────────────────────────────────────
+/**
+ * Inject a mini-player toggle button into Tidal's native footer playback bar.
+ * Returns a cleanup function that removes the button and stops the observer.
+ */
+function mountPlaybackBarButton(player: MiniPlayer): () => void {
+	const BTN_ID = "lmp-bar-btn";
+	document.getElementById(BTN_ID)?.remove();
+
+	const btn = document.createElement("button");
+	btn.id = BTN_ID;
+	btn.className = "lmp-toggle-btn";
+	btn.title = "Toggle Mini Player";
+	btn.setAttribute("aria-label", "Toggle Mini Player");
+	btn.innerHTML = ICON_PIP;
+
+	const syncActive = (visible: boolean) =>
+		btn.classList.toggle("lmp-active", visible);
+	syncActive(player.isVisible);
+
+	btn.addEventListener("click", () => {
+		if (player.isVisible) {
+			player.hide();
+		} else {
+			player.show();
+		}
+	});
+
+	player.onVisibilityChange = syncActive;
+
+	// Ordered candidate selectors for the right-side controls of Tidal's footer bar.
+	// Tidal uses obfuscated-but-readable class names so we match on substrings.
+	const FOOTER_SELECTORS = [
+		'[class*="footerPlayer"] [class*="rightColumn"]',
+		'[class*="footerPlayer"] [class*="rightSection"]',
+		'[class*="footerPlayer"] [class*="right"]',
+		'[class*="playbackControls"] [class*="right"]',
+		'[class*="footerPlayer"]',
+		"footer",
+	];
+
+	let injected = false;
+	const tryInject = () => {
+		if (injected && document.getElementById(BTN_ID)) return;
+		injected = false;
+		for (const sel of FOOTER_SELECTORS) {
+			const container = document.querySelector(sel);
+			if (container) {
+				container.appendChild(btn);
+				injected = true;
+				return;
+			}
+		}
+	};
+
+	tryInject();
+
+	// Re-inject if Tidal's SPA re-renders the footer
+	const obs = new MutationObserver(tryInject);
+	obs.observe(document.body, { childList: true, subtree: true });
+
+	return () => {
+		obs.disconnect();
+		btn.remove();
+	};
 }
 
 // ─── Bootstrap ───────────────────────────────────────────────────────────────
@@ -1003,6 +1080,9 @@ const init = async () => {
 
 	const player = new MiniPlayer(unloads);
 	unloads.add(() => player.destroy());
+
+	// Inject a toggle button into Tidal's native footer playback bar
+	unloads.add(mountPlaybackBarButton(player));
 
 	// Register a context menu button in Tidal's right-click menu
 	// so the user can re-open the player via the profile menu
