@@ -62,4 +62,4 @@ npm run build
 npm run watch
 ```
 
-Requires Node 20+ and the TidaLuna workspace to resolve `@luna/*` types.
+Requires Node 18+ and the TidaLuna workspace to resolve `@luna/*` types.

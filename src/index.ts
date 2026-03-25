@@ -17,7 +17,7 @@
 // @ts-expect-error – these are runtime-resolved Luna modules
 import { Tracer, ReactiveStore, type LunaUnload } from "@luna/core";
 // @ts-expect-error
-import { PlayState, MediaItem, StyleTag, ContentBase, Quality, redux } from "@luna/lib";
+import { PlayState, MediaItem, StyleTag, ContentBase, Quality, ContextMenu, redux } from "@luna/lib";
 
 import { currentLyricIndex, parseLrc, type LyricLine } from "./lyrics";
 
@@ -255,10 +255,9 @@ const CSS = `
 	align-items: center;
 	justify-content: center;
 	cursor: pointer;
-	transition: background .15s, transform .1s;
 	color: rgba(255,255,255,.6);
 	opacity: 0;
-	transition: opacity .2s, background .15s;
+	transition: opacity .2s, background .15s, transform .1s;
 }
 #luna-mini-player:hover .lmp-heart {
 	opacity: 1;
@@ -443,6 +442,7 @@ class MiniPlayer {
 	private swipeAccumY = 0;
 	private static readonly SWIPE_THRESHOLD = 120; // px of accumulated horizontal scroll to trigger skip
 	private static readonly VOL_STEP = 5; // volume % per scroll notch
+	private static readonly SEEK_STEP_SECONDS = 5; // seconds per scroll notch when in seek mode
 
 	constructor(private readonly playerUnloads: Set<LunaUnload>) {
 		this.el = document.createElement("div");
@@ -601,7 +601,7 @@ class MiniPlayer {
 					if (settings.scrollAction === "volume") {
 						this.adjustVolume(-notches * MiniPlayer.VOL_STEP);
 					} else {
-						PlayState.seek(Math.max(0, PlayState.playTime + (-notches * 5)));
+						PlayState.seek(Math.max(0, PlayState.playTime + (-notches * MiniPlayer.SEEK_STEP_SECONDS)));
 					}
 				}
 			}
