@@ -26,15 +26,18 @@ A feature-rich mini player plugin for [TidaLuna](https://github.com/Inrixia/Tida
 
 1. Open Tidal with TidaLuna installed.
 2. Right-click your profile picture → **Luna Settings** → **Plugin Store**.
-3. Paste the plugin URL:
+3. Click the **"Install from URL"** bar and paste:
    ```
-   https://raw.githubusercontent.com/19JVJeffery/Tidal-Mini-Player-Improved/main/dist/tidal-mini-player
+   https://github.com/19JVJeffery/Tidal-Mini-Player-Improved/releases/download/latest/store.json
    ```
 4. Click **Install**.
 
+> **Note – why this URL?**  TidaLuna's store installer expects a `.json` file served from GitHub Releases.  
+> The `store.json` at the URL above is automatically rebuilt and re-published to the `latest` release every time the `main` branch is updated (allow ~1–2 minutes after a new commit for the workflow to finish).
+
 ### Manual install
 
-Download `dist/tidal-mini-player.mjs` and `dist/tidal-mini-player.json` from this repository and place them in your TidaLuna plugins folder.
+Download [`dist/tidal-mini-player.mjs`](https://github.com/19JVJeffery/Tidal-Mini-Player-Improved/releases/latest/download/tidal-mini-player.mjs) and [`dist/tidal-mini-player.json`](https://github.com/19JVJeffery/Tidal-Mini-Player-Improved/releases/latest/download/tidal-mini-player.json) from the latest release and place them in your TidaLuna plugins folder.
 
 ---
 

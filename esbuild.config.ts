@@ -81,7 +81,7 @@ return { contents: lines.join("\n"), loader: "js" as const };
 },
 };
 
-// Write the compiled bundle and a companion package.json for the Luna store
+// Write the compiled bundle and companion manifests for the Luna store
 const writeDistPlugin = {
 name: "write-dist",
 setup(b: import("esbuild").PluginBuild) {
@@ -104,10 +104,17 @@ hash,
 code,
 };
 
+// tidal-mini-player.mjs  – raw bundle (for manual installs)
 await writeFile(outFile, code);
+// tidal-mini-player.json – single-plugin manifest (Install from URL)
 await writeFile(
 outFile.replace(".mjs", ".json"),
 JSON.stringify(distPkg, null, 2),
+);
+// store.json – array format expected by the TidaLuna "Install from URL" / release store pattern
+await writeFile(
+`${outDir}/store.json`,
+JSON.stringify([distPkg], null, 2),
 );
 console.log(`Built ${outFile}`);
 });
