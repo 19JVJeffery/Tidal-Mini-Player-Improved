@@ -1,0 +1,30 @@
+{
+	"name": "tidal-mini-player",
+	"version": "1.0.0",
+	"description": "Feature-rich mini player for TidaLuna — album artwork, animated covers, playback controls, volume scroll, lyrics and more",
+	"author": {
+		"name": "19JVJeffery",
+		"url": "https://github.com/19JVJeffery"
+	},
+	"homepage": "https://github.com/19JVJeffery/Tidal-Mini-Player-Improved",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/19JVJeffery/Tidal-Mini-Player-Improved.git"
+	},
+	"type": "module",
+	"exports": {
+		".": {
+			"types": "./src/index.ts",
+			"default": "./src/index.ts"
+		}
+	},
+	"scripts": {
+		"build": "tsx esbuild.config.ts",
+		"watch": "tsx esbuild.config.ts --watch"
+	},
+	"devDependencies": {
+		"esbuild": "^0.27.1",
+		"tsx": "^4.21.0",
+		"typescript": "^5.9.3"
+	}
+}
